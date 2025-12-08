@@ -1,66 +1,86 @@
 <?php
 session_start();
-$host = "localhost";
-$username = "root";
-$password = "";
-$db = "smart_attendance";
-
-// Connect to database
-$conn = mysqli_connect($host, $username, $password, $db);
-if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
-}
+include 'db_connect.php';
 
 $error = '';
+$success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $fullname = trim($_POST['fullname'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $username = trim($_POST['username'] ?? '');
-    $password = trim($_POST['password'] ?? '');
-    $role = trim($_POST['role'] ?? '');
+    $fullname   = trim($_POST['fullname'] ?? '');
+    $email      = trim($_POST['email'] ?? '');
+    $username   = trim($_POST['username'] ?? '');
+    $password   = trim($_POST['password'] ?? '');
+    $role       = trim($_POST['role'] ?? '');
     $department = trim($_POST['department'] ?? '');
-    $semester = trim($_POST['semester'] ?? '');
+    $batch      = trim($_POST['batch'] ?? '');
 
-    // Validation
+    // ----------- VALIDATION -----------
     if (empty($fullname) || empty($email) || empty($username) || empty($password) || empty($role) || empty($department)) {
-        $error = "All fields are required (except semester for teachers).";
+        $error = "All fields are required (batch only for students).";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
-    } elseif (strlen($password) < 6) {
-        $error = "Password must be at least 6 characters long.";
     } else {
-        // Check if email or username already exists
-        $check = $conn->prepare("SELECT user_id FROM users WHERE email = ? OR username = ?");
-        $check->bind_param("ss", $email, $username);
-        $check->execute();
-        $result = $check->get_result();
-
-        if ($result->num_rows > 0) {
-            $error = "Email or username already registered.";
-        } else {
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-            $sql = "INSERT INTO users (fullname, email, username, password, role, department, semester) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sssssss", $fullname, $email, $username, $hashed_password, $role, $department, $semester);
-
-            if ($stmt->execute()) {
-                $user_id =$stmt->insert_id;
-                 if ($role === 'student') {
-                    $conn->query("INSERT INTO student (user_id) VALUES ($user_id)");
-                } elseif ($role === 'teacher') {
-                    $conn->query("INSERT INTO teacher (user_id) VALUES ($user_id)");
-                }
-                header("Location: login.php");
-                exit;
-            } else {
-                $error = "Error creating account. Please try again.";
-            }
-            $stmt->close();
+        $allowed_domains = ['gmail.com'];
+        $email_domain = strtolower(substr(strrchr($email, "@"), 1));
+        if (!in_array($email_domain, $allowed_domains)) {
+            $error = "Only Gmail addresses are allowed (example: name@gmail.com).";
         }
-        $check->close();
+    }
+
+    if (!$error && strlen($password) < 6) {
+        $error = "Password must be at least 6 characters long.";
+    }
+
+    // Check for existing email or username
+    if (!$error) {
+        $stmtCheck = $conn->prepare("SELECT user_id FROM users WHERE email=? OR username=?");
+        $stmtCheck->bind_param("ss", $email, $username);
+        $stmtCheck->execute();
+        $resultCheck = $stmtCheck->get_result();
+        if ($resultCheck->num_rows > 0) {
+            $error = "Email or username already registered.";
+        }
+        $stmtCheck->close();
+    }
+
+    // ----------- INSERT USER -----------
+    if (!$error) {
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        $batch_value = ($role === 'student') ? (int)$batch : NULL;
+
+        $stmt = $conn->prepare("INSERT INTO users (fullname, email, username, password, role, department, batch) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssssss", $fullname, $email, $username, $hashed_password, $role, $department, $batch_value);
+
+        if ($stmt->execute()) {
+            $user_id = $stmt->insert_id;
+
+            // Generate verification token
+            $token = bin2hex(random_bytes(16));
+            $conn->query("UPDATE users SET verfication_token='$token' WHERE user_id=$user_id");
+
+            // Add to student or teacher table
+            if ($role === 'student') {
+                $conn->query("INSERT INTO student (user_id) VALUES ($user_id)");
+            } elseif ($role === 'teacher') {
+                $conn->query("INSERT INTO teacher (user_id) VALUES ($user_id)");
+            }
+
+            // --------- Email Verification (optional for testing) ---------
+            $verification_link = "http://localhost/project/verify.php?token=" . $token;
+            $subject = "Verify Your Email - Smart Attendance";
+            $message = "Hi $fullname,\n\nPlease click the link below to verify your email:\n$verification_link\n\nThank you!";
+            $headers = "From: no-reply@smartattendance.com";
+            mail($email, $subject, $message, $headers);
+          
+
+            $success = "Account created successfully! Please login after verification.";
+            header("Location: login.php");
+            exit;
+
+        } else {
+            $error = "Error creating account: " . $stmt->error;
+        }
+        $stmt->close();
     }
 }
 ?>
@@ -137,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <option value="">Select Role</option>
             <option value="teacher">Teacher</option>
             <option value="student">Student</option>
+            <option value="admin">Admin</option>
         </select>
 
         <label>Department:</label>
@@ -144,10 +165,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <option value="">Select dept</option>
             <option value="BCA">BCA</option>
             <option value="Bcscit">Bcscit</option>
+            <option value="Faculty">Faculty</option>
         </select>
+       <label>Batch (Students Only)</label>
+       <input type="number" id="batch" name="batch" min="1" max="8" disabled>
+       <script>
+    const roleSelect = document.querySelector("select[name='role']");
+    const semesterInput = document.getElementById("batch");
 
-        <label>Semester (for students):</label>
-        <input type="number" name="semester" min="1">
+    roleSelect.addEventListener("change", function() {
+        if (this.value === "student") {
+            semesterInput.disabled = false;
+        } else {
+            semesterInput.disabled = true;
+            semesterInput.value = "";
+        }
+    });
+</script>
 
         <label>
             <input type="checkbox" required> I agree to the Terms of Service

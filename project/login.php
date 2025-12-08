@@ -1,77 +1,60 @@
 <?php
 session_start();
-
-// Database connection
-$host = "localhost";
-$username = "root";
-$password = "";
-$db = "smart_attendance";
-
-$conn = mysqli_connect($host, $username, $password, $db);
-if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
-}
+include 'db_connect.php';
 
 $error = '';
 
-// Handle login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim($_POST['email'] ?? '');
+    $email    = trim($_POST['email'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    if (empty($email) || empty($password)) {
-        $error = "Email and Password are required.";
+    if ($email === '' || $password === '') {
+        $error = "Please enter both email and password.";
     } else {
-        $stmt = $conn->prepare("SELECT user_id, fullname, password, role FROM users WHERE email = ?");
+        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? LIMIT 1");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
 
-        if ($user = $result->fetch_assoc()) {
-            // Verify hashed password
-            if (password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['user_id'];
-                $_SESSION['fullname'] = $user['name'];
-                $_SESSION['role'] = $user['role'];
+        if ($result && $result->num_rows === 1) {
+            $row = $result->fetch_assoc();
 
-                // Redirect based on role
-                if ($user['role'] === 'teacher') {
-                    header('Location: Teacher_dashboard.php');
-                    exit;
-                } elseif ($user['role'] === 'student') {
-                    header('Location: student_dashboard.php');
-                    exit;
+            if (password_verify($password, $row['password'])) {
+
+                // Check email verification only for teacher and student
+                if (($row['role'] === 'teacher' || $row['role'] === 'student') && $row['is_verified'] != 1) {
+                    $error = "Please verify your email before login.";
                 } else {
-                    $error = "Access denied. Only students and teachers can log in.";
+                    // Set session variables
+                    $_SESSION['user_id']  = $row['user_id'];
+                    $_SESSION['role']     = $row['role'];
+                    $_SESSION['fullname'] = $row['fullname'];
+
+                    // Redirect based on role
+                    switch ($row['role']) {
+                        case 'admin':
+                            header("Location: admin_dashboard.php");
+                            break;
+                        case 'teacher':
+                            header("Location: teacher_dashboard.php");
+                            break;
+                        case 'student':
+                            header("Location: student_dashboard.php");
+                            break;
+                        default:
+                            // fallback just in case
+                            header("Location: login.php");
+                    }
+                    exit;
                 }
+
             } else {
-                $error = "Invalid password.";
+                $error = "Invalid email or password.";
             }
         } else {
-            $error = "No account found with that email.";
+            $error = "Invalid email or password.";
         }
-
-
-        $stmt->close();
     }
-}
-
-// Already logged-in users redirect
-if (isset($_SESSION['user_id'])) {
-    if ($_SESSION['role'] === 'teacher') {
-        header('Location: Teacher_dashboard.php');
-        exit;
-    } elseif ($_SESSION['role'] === 'student') {
-        header('Location: student_dashboard.php');
-        exit;
-    }
-}
-
-// Logout functionality
-if (isset($_GET['logout'])) {
-    session_destroy();
-    header('Location: landing.php');
-    exit;
 }
 ?>
 <!DOCTYPE html>
