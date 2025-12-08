@@ -7,9 +7,8 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'teacher') {
     exit;
 }
 
-// ====== FETCH STATS ======
-
 // Total students
+
 $total_students_query = $conn->query("SELECT COUNT(*) AS total FROM student");
 $total_students = $total_students_query->fetch_assoc()['total'];
 
@@ -18,11 +17,11 @@ $active_students_query = $conn->query("SELECT COUNT(*) AS active FROM student WH
 $active_students = $active_students_query->fetch_assoc()['active'];
 
 // Average attendance (count of present / total * 100)
-// $attendance_query = $conn->query("
-//     SELECT 
-//         (SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) / COUNT(*)) * 100 AS avg_attendance
-//     FROM attendance");
-// $average_attendance = round($attendance_query->fetch_assoc()['avg_attendance'] ?? 0, 2);
+$attendance_query = $conn->query("
+    SELECT 
+        (SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) / COUNT(*)) * 100 AS avg_attendance
+    FROM attendance");
+$average_attendance = round($attendance_query->fetch_assoc()['avg_attendance'] ?? 0, 2);
 ?>
 
 <!DOCTYPE html>
@@ -31,7 +30,6 @@ $active_students = $active_students_query->fetch_assoc()['active'];
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <title>Dashboard</title>
     <style>
    * {
@@ -92,11 +90,6 @@ body {
 }
 .nav a:hover {
     background: #F3E5F5;
-    color: #6A1B9A;
-}
-.nav a.active {
-    background: linear-gradient(135deg, #8E24AA, #BA68C8);
-    color: white;
 }
 .main {
     flex: 1;
@@ -179,8 +172,8 @@ body {
             <h1>Dashboard</h1>
           </div>
     <nav class="nav">
-        <a href="Teacher_dashboard.php" class="active" ><i class="fa fa-home" style="font-size: 24px;color:white"></i>Tea</a>
-        <a href="student_dashboard.php" ><i class="fa fa-graduation-cap" style="font-size:22px;color:purple"></i>🎓Students</a>
+        <a href="Teacher_dashboard.php" class="active" ><i class="fa fa-home" style="font-size: 24px;color:purple"></i>Teacher</a>
+        <a href="student.php" ><i class="fa fa-graduation-cap" style="font-size:22px;color:purple"></i>Students</a>
         <a href="generate_qr.php"><i class="fa fa-qrcode" style="font-size:24px;color:purple"></i>Generate QR</a>
         <a href="view_Attendance.php"><i class="fa fa-file-o" style="font-size:22px;color:purple"></i>View Attendance</a>
         <a href="export_monthly.php"><i class="fa fa-download" style="font-size:22px;color:purple"></i> Export Monthly</a>
@@ -189,9 +182,11 @@ body {
     </div>
     <div class="main">
         <div class="topbar">
-            <h2>Hello Student!</h2>
+            <h2>Hello Teacher
+                !</h2>
               <div class="search"> <input type="text" placeholder="Search...">
-       </div>  </div>
+       </div>  
+    </div>
       
         <div class="stats">
             <div class="card">

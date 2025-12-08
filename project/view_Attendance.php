@@ -2,21 +2,21 @@
 session_start();
 include 'db_connect.php';
 
-// Ensure only teacher can access
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'teacher') {
+// Ensure only admin can access
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
   echo "Unauthorized Access";
   exit;
 }
 
-// Fetch classes for this teacher
-$teacher_id = $_SESSION['user_id'];
-$classes = $conn->query("SELECT * FROM classes WHERE teacher_id = $teacher_id");
+// Fetch classes for this admin
+$admin_id = $_SESSION['user_id'];
+$classes = $conn->query("SELECT * FROM class WHERE admin_id = $admin_id");
 
 // Handle filter
 $class_id = $_GET['class_id'] ?? '';
 $date = $_GET['date'] ?? '';
 
-$query = "SELECT s.session_date, st.name AS student_name, a.status 
+$query = "SELECT s.session_date, s.name AS student_name, a.status 
           FROM attendance a
           JOIN sessions s ON a.session_id = s.id
           JOIN students st ON a.student_id = st.id
