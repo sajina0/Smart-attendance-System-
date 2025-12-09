@@ -2,33 +2,33 @@
 session_start();
 include 'db_connect.php';
 
-// Only admin can access
+// Allow only admin
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     header("Location: login.php");
     exit;
 }
 
-// Fetch subjects
-$sql = "SELECT * FROM subject ORDER BY sub_name";
+// Fetch teachers
+$sql = "SELECT user_id, fullname, email FROM users WHERE role = 'teacher'";
 $result = $conn->query($sql);
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Subjects</title>
+    <title>Manage Teachers</title>
 
    <style>
     body {
         font-family: Arial, sans-serif;
-        background: #F3E5F5; /* soft lavender */
+        background: #F3E5F5; /* soft lavender background */
         padding: 20px;
-        color: #4B5563;
+        color: #4B5563; /* neutral dark text */
     }
 
     h2 {
         text-align: center;
         margin-bottom: 20px;
-        color: #6A1B9A; /* primary purple */
+        color: #6A1B9A; /* dashboard primary color */
     }
 
     .table-container {
@@ -40,7 +40,7 @@ $result = $conn->query($sql);
         width: 100%;
         border-collapse: collapse;
         background: #FFFFFF;
-        box-shadow: 0px 4px 12px rgba(106, 27, 154, 0.15);
+        box-shadow: 0px 4px 12px rgba(106, 27, 154, 0.1);
         border-radius: 10px;
         overflow: hidden;
     }
@@ -52,18 +52,17 @@ $result = $conn->query($sql);
     }
 
     th {
-        background: #6A1B9A; /* deep purple */
+        background: #6A1B9A; /* deep purple header */
         color: white;
         font-weight: 600;
     }
 
     tr:nth-child(even) {
-        background: #FAF5FF; /* light purple */
+        background: #FAF5FF; /* light purple even rows */
     }
 
     tr:hover {
-        background: #E9D5FF; /* hover highlight */
-        transition: 0.2s;
+        background: #E9D5FF; /* light hover effect */
     }
 
     /* Buttons */
@@ -78,9 +77,8 @@ $result = $conn->query($sql);
     }
 
     .edit {
-        background: #8E24AA; /* dark purple */
+        background: #8E24AA; /* primary dark purple */
     }
-
     .edit:hover {
         background: #6A1B9A;
     }
@@ -88,13 +86,12 @@ $result = $conn->query($sql);
     .delete {
         background: #E53935; /* red for delete */
     }
-
     .delete:hover {
         background: #D32F2F;
     }
 
     .add-btn {
-        background: #6A1B9A;
+        background: #6A1B9A; /* matches dashboard */
         margin-bottom: 15px;
         display: inline-block;
         text-decoration: none;
@@ -103,23 +100,26 @@ $result = $conn->query($sql);
         border-radius: 5px;
         transition: 0.2s;
     }
-
     .add-btn:hover {
         background: #8E24AA;
     }
 </style>
+
+
 </head>
 <body>
 
-<h2>Manage Subjects</h2>
-    <a href="add_subject.php" class="add-btn">+ Add Subject</a>
+<h2>Manage Teachers</h2>
+
+<div class="table-container">
+
+    <a href="add_teacher.php" class="add-btn">+ Add Teacher</a>
 
     <table>
         <tr>
-            <th>Subject ID</th>
-            <th>Subject Name</th>
-            <th>Subject Code</th>
-            <th>Class</th>
+            <th>Teacher ID</th>
+            <th>Full Name</th>
+            <th>Email</th>
             <th>Actions</th>
         </tr>
 
@@ -127,26 +127,26 @@ $result = $conn->query($sql);
         if ($result && $result->num_rows > 0) {
             while ($row = $result->fetch_assoc()) {
                 echo "<tr>
-                    <td>" . $row['subject_id'] . "</td>
-                    <td>" . $row['sub_name'] . "</td>
-                    <td>" . $row['subject_code'] . "</td>
-                    <td>" . $row['class_name'] . "</td>
+                    <td>" . $row['user_id'] . "</td>
+                    <td>" . $row['fullname'] . "</td>
+                    <td>" . $row['email'] . "</td>
                     <td>
-                        <a href='edit_subject.php?id=" . $row['subject_id'] . "'>
+                        <a href='edit_teacher.php?user_id=" . $row['user_id'] . "'>
                             <button class='btn edit'>Edit</button>
                         </a>
-                        <a href='delete_subject.php?id=" . $row['subject_id'] . "' onclick='return confirm(\"Delete this subject?\")'>
+                        <a href='delete_teacher.php?user_id=" . $row['user_id'] . "' onclick='return confirm(\"Are you sure?\")'>
                             <button class='btn delete'>Delete</button>
                         </a>
                     </td>
                 </tr>";
             }
         } else {
-            echo "<tr><td colspan='5'>No subjects found</td></tr>";
+            echo "<tr><td colspan='4'>No teachers found</td></tr>";
         }
         ?>
 
     </table>
+</div>
 
 </body>
 </html>

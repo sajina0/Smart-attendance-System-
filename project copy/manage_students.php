@@ -77,28 +77,23 @@ $result = $conn->query($sql);
         border-radius: 6px;
         margin-right: 5px;
         font-size: 14px;
+        transition: 0.2s;
     }
-     .add-btn {
-        background: #6A1B9A;
-        margin-bottom: 15px;
-        display: inline-block;
-        text-decoration: none;
-        padding: 10px 15px;
-        color: white;
-        border-radius: 5px;
-    }
+
     a.approve { 
         background: #4CAF50;
     }
     a.approve:hover {
         background: #45A049;
     }
+
     a.reject { 
         background: #E53935; 
     }
     a.reject:hover {
         background: #D32F2F;
     }
+
     a.delete { 
         background: #6A1B9A; 
     }
@@ -106,12 +101,11 @@ $result = $conn->query($sql);
         background: #8E24AA; 
     }
 </style>
+
 </head>
 <body>
 
 <h2 style="text-align:center;">Manage Students</h2>
- <a href="add_students.php" class="add-btn">+ Add Students</a>
-
 
 <table>
     <tr>

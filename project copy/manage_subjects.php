@@ -112,6 +112,9 @@ $result = $conn->query($sql);
 <body>
 
 <h2>Manage Subjects</h2>
+
+<div class="table-container">
+
     <a href="add_subject.php" class="add-btn">+ Add Subject</a>
 
     <table>
@@ -147,6 +150,7 @@ $result = $conn->query($sql);
         ?>
 
     </table>
+</div>
 
 </body>
 </html>

@@ -1,9 +1,8 @@
-
 <?php
 session_start();
 include 'db_connect.php';
 
-// Only admin can access this page
+// Only admin can access
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     header("Location: login.php");
     exit;
@@ -15,27 +14,26 @@ $success = "";
 // When form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $subject_name  = trim($_POST['subject_name']);  // form input
-    $subject_code  = trim($_POST['subject_code']);
+    $student_name  = trim($_POST['student_name']);
+    $student_email = trim($_POST['student_email']);
     $class_name    = trim($_POST['class_name']);
 
-    // Check duplicate subject code
-    $check = $conn->prepare("SELECT * FROM subject WHERE subject_code = ?");
-    $check->bind_param("i", $subject_code); // subject_code is int
+    // Check duplicate email
+    $check = $conn->prepare("SELECT * FROM student WHERE email = ?");
+    $check->bind_param("s", $student_email);
     $check->execute();
     $res = $check->get_result();
 
     if ($res->num_rows > 0) {
-        $error = "Subject code already exists!";
+        $error = "Email already exists!";
     } else {
-        $stmt = $conn->prepare("INSERT INTO subject (sub_name, subject_code, class_name) VALUES (?, ?, ?)");
-        $stmt->bind_param("sis", $subject_name, $subject_code, $class_name);
-        // "s" = string, "i" = integer
+        $stmt = $conn->prepare("INSERT INTO student (name, email, class_name) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $student_name, $student_email, $class_name);
 
         if ($stmt->execute()) {
-            $success = "Subject added successfully!";
+            $success = "Student added successfully!";
         } else {
-            $error = "Error adding subject!";
+            $error = "Error adding student!";
         }
 
         $stmt->close();
@@ -44,14 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $check->close();
 }
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Add Subject</title>
-
+    <title>Add Student</title>
     <style>
-    body {
+       body {
         font-family: Arial, sans-serif;
         background: #F3E5F5; /* soft lavender */
         padding: 20px;
@@ -125,11 +121,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         text-decoration: underline;
     }
 </style>
-
+    </style>
 </head>
 <body>
 
-<h2 style="text-align:center;">Add New Subject</h2>
+<h2 style="text-align:center;">Add New Student</h2>
 
 <?php
 if ($error) echo "<p class='error'>$error</p>";
@@ -137,27 +133,25 @@ if ($success) echo "<p class='success'>$success</p>";
 ?>
 
 <form method="POST">
+    <label>Student Name</label>
+    <input type="text" name="student_name" required>
 
-    <label>Subject Name</label>
-    <input type="text" name="subject_name" required>
-
-    <label>Subject Code</label>
-    <input type="text" name="subject_code" required>
+    <label>Email</label>
+    <input type="email" name="student_email" required>
 
     <label>Select Class</label>
     <select name="class_name" required>
         <option value="">-- Select Class --</option>
         <option value="1stSem">1stSem</option>
-        <option value="3srdSem">3rdSem</option>
+        <option value="3rdSem">3rdSem</option>
         <option value="4thSem">4thSem</option>
         <option value="5thSem">5thSem</option>
         <option value="7thSem">7thSem</option>
     </select>
 
-    <button type="submit">Add Subject</button>
+    <button type="submit">Add Student</button>
 
-    <a href="manage_subjects.php">← Back to Subject List</a>
-
+    <a href="manage_students.php">← Back to Student List</a>
 </form>
 
 </body>
