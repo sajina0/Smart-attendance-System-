@@ -2,60 +2,157 @@
 session_start();
 include 'db_connect.php';
 require __DIR__ . '/vendor/autoload.php';
-include "config.php";
 use Endroid\QrCode\Builder\Builder;
 
-// Only teacher can access
+// Only teachers can access
 if (!isset($_SESSION['role']) || strtolower($_SESSION['role']) !== 'teacher') {
-    echo "Unauthorized Access";
-    exit;
+    die("Unauthorized Access");
 }
 
-$teacher_id = $_SESSION['user_id'];
+$user_id = $_SESSION['user_id'];
+
+// Get teacher_id from user_id
+$teacher_query = $conn->prepare("SELECT teacher_id FROM teacher WHERE user_id = ?");
+$teacher_query->bind_param("i", $user_id);
+$teacher_query->execute();
+$teacher_result = $teacher_query->get_result();
+
+if ($teacher_result->num_rows === 0) {
+    die("Teacher account not found. Please contact administrator.");
+}
+
+$teacher_row = $teacher_result->fetch_assoc();
+$teacher_id = $teacher_row['teacher_id'];
+$teacher_query->close();
 $success = "";
+$error = "";
 $qrImage = "";
+$session_id = null;
 
-// Generate attendance QR code
-if (isset($_POST['generate'])) {
-    $class_id = intval($_POST['class_id']);
-    $session_date = $_POST['session_date'];
-    $subject_id = 1;
-    // Ensure unique token
-    do {
-        $token = bin2hex(random_bytes(8));
-        $check = $conn->prepare("SELECT id FROM sessions WHERE token = ?");
-        $check->bind_param("s", $token);
-        $check->execute();
-        $result = $check->get_result();
-    } while ($result->num_rows > 0);
-    // Insert session
-    $stmt = $conn->prepare("INSERT INTO sessions (class_id, teacher_id, session_date, token) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("iiss", $class_id, $teacher_id, $session_date, $token);
+// Fetch classes assigned to this teacher
+$class_stmt = $conn->prepare("SELECT class_id, class_name FROM class WHERE teacher_id = ? ORDER BY class_name");
+$class_stmt->bind_param("i", $teacher_id);
+$class_stmt->execute();
+$classes = $class_stmt->get_result();
 
-    if ($stmt->execute()) {
-        $success = "Attendance QR code generated successfully!";
-        // The QR code links to attendance.php with the token
-        $attendance_link = "{$ip_address}:{$app_port}/attendance.php?token=$token&class=$class_id&date=$session_date&subject_id=$subject_id";
+// Fetch subjects for these classes
+$subject_stmt = $conn->prepare("
+    SELECT s.subject_id, s.sub_name, s.class_id 
+    FROM subject s
+    INNER JOIN class c ON s.class_id = c.class_id
+    WHERE c.teacher_id = ?
+    ORDER BY s.sub_name
+");
+$subject_stmt->bind_param("i", $teacher_id);
+$subject_stmt->execute();
+$subjects = $subject_stmt->get_result();
 
-        // Generate QR code as base64 image
-        $qr = Builder::create()
-            ->data($attendance_link)
-            ->size(300)
-            ->margin(10)
-            ->build();
-        $qrImage = $qr->getDataUri();
-    } else {
-        $success = "Error generating attendance QR code!";
-    }
-
-    $stmt->close();
+$all_subjects_arr = [];
+while ($row = $subjects->fetch_assoc()) {
+    $all_subjects_arr[] = $row;
 }
+$subject_stmt->close();
 
-// Fetch classes securely
-$stmt = $conn->prepare("SELECT * FROM class WHERE teacher_id = ?");
-$stmt->bind_param("i", $teacher_id);
-$stmt->execute();
-$classes = $stmt->get_result();
+// Handle QR generation
+if (isset($_POST['generate'])) {
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error = "Invalid request. Please try again.";
+    } else {
+        $class_id = intval($_POST['class_id']);
+        $subject_id = intval($_POST['subject_id']);
+        $session_date = $_POST['session_date'];
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $session_date)) {
+            $error = "Invalid date format.";
+        } elseif (strtotime($session_date) < strtotime(date('Y-m-d'))) {
+            $error = "Session date cannot be in the past.";
+        } elseif (!$class_id || !$subject_id) {
+            $error = "Please select a Class and a Subject.";
+        } else {
+            // Validate class belongs to teacher
+            $check = $conn->prepare("SELECT class_id FROM class WHERE class_id = ? AND teacher_id = ?");
+            $check->bind_param("ii", $class_id, $teacher_id);
+            $check->execute();
+
+            if ($check->get_result()->num_rows === 0) {
+                $error = "Invalid class selection.";
+            } else {
+                // Validate subject belongs to class
+                $check_sub = $conn->prepare("SELECT subject_id FROM subject WHERE subject_id = ? AND class_id = ?");
+                $check_sub->bind_param("ii", $subject_id, $class_id);
+                $check_sub->execute();
+
+                if ($check_sub->get_result()->num_rows === 0) {
+                    $error = "Invalid subject selection for the selected class.";
+                } else {
+                    // Check if session already exists
+                    $check_sess = $conn->prepare(
+                        "SELECT id, token FROM session 
+                         WHERE class_id = ? AND subject_id = ? AND session_date = ? AND teacher_id = ? AND role = 'teacher'"
+                    );
+                    $check_sess->bind_param("iisi", $class_id, $subject_id, $session_date, $teacher_id);
+                    $check_sess->execute();
+                    $existing = $check_sess->get_result();
+
+                    if ($existing->num_rows > 0) {
+                        $row = $existing->fetch_assoc();
+                        $token = $row['token'];
+                        $session_id = $row['id'];
+                        $success = "QR code generated successfully";
+
+                        $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") .
+                                    "://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
+                         $attendance_link = "192.168.137.1/abcd/project/attendance.php?token=$token&class=$class_id&date=$session_date&subject_id=$subject_id";
+
+
+                        $qr = Builder::create()
+                            ->data($attendance_link)
+                            ->size(300)
+                            ->margin(10)
+                            ->build();
+                        $qrImage = $qr->getDataUri();
+                    } else {
+                        // Generate new token
+                        do {
+                            $token = bin2hex(random_bytes(16));
+                            $chk = $conn->prepare("SELECT id FROM session WHERE token = ?");
+                            $chk->bind_param("s", $token);
+                            $chk->execute();
+                        } while ($chk->get_result()->num_rows > 0);
+
+                        $stmt = $conn->prepare(
+                            "INSERT INTO session (class_id, teacher_id, student_id, subject_id, session_date, token, role) 
+                             VALUES (?, ?, NULL, ?, ?, ?, 'teacher')"
+                        );
+                        $stmt->bind_param("iiiss", $class_id, $teacher_id, $subject_id, $session_date, $token);
+
+                        if ($stmt->execute()) {
+                            $session_id = $stmt->insert_id;
+                            $success = "Attendance QR code generated successfully!";
+
+                            $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") .
+                                        "://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
+                            $attendance_link = $base_url . "/attendance.php?token=" . urlencode($token);
+
+                            $qr = Builder::create()
+                                ->data($attendance_link)
+                                ->size(300)
+                                ->margin(10)
+                                ->build();
+                            $qrImage = $qr->getDataUri();
+                        } else {
+                            $error = "Error generating attendance QR code!";
+                        }
+                        $stmt->close();
+                    }}
+                $check_sub->close();
+            }
+            $check->close();
+        }}}
+// Generate CSRF token
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 ?>
 
 <!DOCTYPE html>
@@ -63,40 +160,15 @@ $classes = $stmt->get_result();
 <head>
     <title>Generate Attendance QR Code</title>
     <style>
-        body {
-            font-family: Arial;
-            padding:30px; 
-            background:#f5f5f5; 
-        }
-        form { 
-            background:#fff; 
-            padding:20px; 
-            width:400px; 
-            margin:auto; 
-            border-radius:8px; 
-            box-shadow:0 0 10px rgba(0,0,0,0.1);}
-        input, select, button {
-            width:100%; 
-            padding:10px; 
-            margin:10px 0; 
-            border-radius:5px; 
-            border:1px solid #ccc;
-        }
-        button { 
-            background:#4CAF50; 
-            color:white; 
-            border:none; 
-            cursor:pointer; 
-        }
-        .success { 
-            color:green; 
-            text-align:center; 
-            margin-bottom:15px; 
-        }
-        .qr { 
-            text-align:center; 
-            margin-top:20px; 
-        }
+        body { font-family: Arial; padding: 30px; background: #F3E5F5; color: #6B7280; }
+        form { background: #FFF; padding: 25px; width: 450px; margin: auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(106,27,154,0.15); border-left: 6px solid #6A1B9A; }
+        input, select { width: 100%; padding: 12px; margin: 12px 0; border-radius: 6px; border: 1px solid #ccc; }
+        input:focus, select:focus { border-color: #6A1B9A; outline: none; box-shadow: 0 0 5px #BA68C8; }
+        button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: none; cursor: pointer; background: #6A1B9A; color: white; font-size: 15px; font-weight: 600; }
+        button:hover { background: #8E24AA; }
+        .success { color: #4CAF50; text-align: center; margin-bottom: 15px; font-weight: 600; }
+        .error { color: #f56565; text-align: center; margin-bottom: 15px; font-weight: 600; }
+        .qr { text-align: center; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -107,25 +179,29 @@ $classes = $stmt->get_result();
     <p class="success"><?= htmlspecialchars($success) ?></p>
 <?php endif; ?>
 
+<?php if ($error): ?>
+    <p class="error"><?= htmlspecialchars($error) ?></p>
+<?php endif; ?>
+
 <form method="POST">
-    <label>Select Class:</label>
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+
+    <label>Class</label>
     <select name="class_id" required>
         <option value="">-- Select Class --</option>
-        <option value="">4th semester</option>
         <?php while ($c = $classes->fetch_assoc()): ?>
-            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['class_name']) ?></option>
+            <option value="<?= $c['class_id'] ?>"><?= htmlspecialchars($c['class_name']) ?></option>
         <?php endwhile; ?>
     </select>
-    <label>Select subject:</label>
+
+    <label>Subject</label>
     <select name="subject_id" required>
-        <option value="">-- Select subject --</option>
-        <option value="">SL</option>
-        <?php while ($c = $classes->fetch_assoc()): ?>
-            <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['subject_name']) ?></option>
-        <?php endwhile; ?>
+        <option value="">-- Select Subject --</option>
+        <!-- Options populated dynamically by JS -->
     </select>
-    <label>Session Date:</label>
-    <input type="date" name="session_date" required>
+
+    <label>Session Date</label>
+    <input type="date" name="session_date" required min="<?= date('Y-m-d') ?>">
 
     <button type="submit" name="generate">Generate QR Code</button>
 </form>
@@ -136,6 +212,25 @@ $classes = $stmt->get_result();
         <img src="<?= $qrImage ?>" alt="Attendance QR Code">
     </div>
 <?php endif; ?>
+
+<script>
+const allSubjects = <?= json_encode($all_subjects_arr) ?>;
+const classSelect = document.querySelector('select[name="class_id"]');
+const subjectSelect = document.querySelector('select[name="subject_id"]');
+
+classSelect.addEventListener('change', function() {
+    const selectedClass = parseInt(this.value);
+    subjectSelect.innerHTML = '<option value="">-- Select Subject --</option>';
+    allSubjects.forEach(s => {
+        if (s.class_id == selectedClass) {
+            const opt = document.createElement('option');
+            opt.value = s.subject_id;
+            opt.text = s.sub_name;
+            subjectSelect.appendChild(opt);
+        }
+    });
+});
+</script>
 
 </body>
 </html>
