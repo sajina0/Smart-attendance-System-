@@ -30,7 +30,7 @@ $qrImage = "";
 $session_id = null;
 
 // Fetch classes assigned to this teacher
-$class_stmt = $conn->prepare("SELECT class_id, class_name FROM class WHERE teacher_id = ? ORDER BY class_name");
+$class_stmt = $conn->prepare("SELECT class_id, class_name FROM classes WHERE teacher_id = ? ORDER BY class_name");
 $class_stmt->bind_param("i", $teacher_id);
 $class_stmt->execute();
 $classes = $class_stmt->get_result();
@@ -39,7 +39,7 @@ $classes = $class_stmt->get_result();
 $subject_stmt = $conn->prepare("
     SELECT s.subject_id, s.sub_name, s.class_id 
     FROM subject s
-    INNER JOIN class c ON s.class_id = c.class_id
+    INNER JOIN classes c ON s.class_id = c.class_id
     WHERE c.teacher_id = ?
     ORDER BY s.sub_name
 ");
@@ -70,7 +70,7 @@ if (isset($_POST['generate'])) {
             $error = "Please select a Class and a Subject.";
         } else {
             // Validate class belongs to teacher
-            $check = $conn->prepare("SELECT class_id FROM class WHERE class_id = ? AND teacher_id = ?");
+            $check = $conn->prepare("SELECT class_id FROM classes WHERE class_id = ? AND teacher_id = ?");
             $check->bind_param("ii", $class_id, $teacher_id);
             $check->execute();
 
@@ -87,7 +87,7 @@ if (isset($_POST['generate'])) {
                 } else {
                     // Check if session already exists
                     $check_sess = $conn->prepare(
-                        "SELECT id, token FROM session 
+                        "SELECT session_id, token FROM session 
                          WHERE class_id = ? AND subject_id = ? AND session_date = ? AND teacher_id = ? AND role = 'teacher'"
                     );
                     $check_sess->bind_param("iisi", $class_id, $subject_id, $session_date, $teacher_id);
@@ -97,7 +97,7 @@ if (isset($_POST['generate'])) {
                     if ($existing->num_rows > 0) {
                         $row = $existing->fetch_assoc();
                         $token = $row['token'];
-                        $session_id = $row['id'];
+                        $session_id = $row['session_id'];
                         $success = "QR code generated successfully";
 
                         $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") .
@@ -115,7 +115,7 @@ if (isset($_POST['generate'])) {
                         // Generate new token
                         do {
                             $token = bin2hex(random_bytes(16));
-                            $chk = $conn->prepare("SELECT id FROM session WHERE token = ?");
+                            $chk = $conn->prepare("SELECT session_id FROM session WHERE token = ?");
                             $chk->bind_param("s", $token);
                             $chk->execute();
                         } while ($chk->get_result()->num_rows > 0);
@@ -160,15 +160,74 @@ if (!isset($_SESSION['csrf_token'])) {
 <head>
     <title>Generate Attendance QR Code</title>
     <style>
-        body { font-family: Arial; padding: 30px; background: #F3E5F5; color: #6B7280; }
-        form { background: #FFF; padding: 25px; width: 450px; margin: auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(106,27,154,0.15); border-left: 6px solid #6A1B9A; }
-        input, select { width: 100%; padding: 12px; margin: 12px 0; border-radius: 6px; border: 1px solid #ccc; }
-        input:focus, select:focus { border-color: #6A1B9A; outline: none; box-shadow: 0 0 5px #BA68C8; }
-        button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: none; cursor: pointer; background: #6A1B9A; color: white; font-size: 15px; font-weight: 600; }
-        button:hover { background: #8E24AA; }
-        .success { color: #4CAF50; text-align: center; margin-bottom: 15px; font-weight: 600; }
-        .error { color: #f56565; text-align: center; margin-bottom: 15px; font-weight: 600; }
-        .qr { text-align: center; margin-top: 20px; }
+        body { 
+            font-family: Arial; 
+            padding: 30px; 
+            background: #F3E5F5; 
+            color: #6B7280; 
+        }
+        form { 
+            background: #FFF; 
+            padding: 25px; 
+            width: 450px; 
+            margin: auto; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 12px rgba(106,27,154,0.15); 
+            border-left: 6px solid #6A1B9A; 
+        }
+        input, select { 
+            width: 100%; 
+            padding: 12px; 
+            margin: 12px 0; 
+            border-radius: 6px; 
+            border: 1px solid #ccc; 
+        }
+        input:focus, select:focus { 
+            border-color: #6A1B9A; 
+            outline: none; 
+            box-shadow: 0 0 5px #BA68C8; }
+        button { 
+            width: 100%; 
+            padding: 12px; 
+            margin: 10px 0; 
+            border-radius: 
+            6px; border: none; 
+            cursor: pointer; 
+            background: #6A1B9A; 
+            color: white; 
+            font-size: 15px; 
+            font-weight: 600; 
+        }
+        button:hover { 
+            background: #8E24AA; 
+        }
+        .success { 
+            color: #4CAF50; 
+            text-align: center; 
+            margin-bottom: 15px; 
+            font-weight: 600; 
+        }
+        .error { 
+            color: #f56565; 
+            text-align: center; 
+            margin-bottom: 15px; 
+            font-weight: 600; 
+        }
+        .qr { 
+            text-align: center; 
+            margin-top: 20px; 
+        }
+        a { 
+            text-decoration: none; 
+            display: block; 
+            text-align: center; 
+            margin-top: 10px; 
+            color:#6A1B9A; 
+        }
+        a:hover { 
+            color:#8E24AA; 
+            text-decoration: underline; 
+        }
     </style>
 </head>
 <body>
@@ -204,6 +263,7 @@ if (!isset($_SESSION['csrf_token'])) {
     <input type="date" name="session_date" required min="<?= date('Y-m-d') ?>">
 
     <button type="submit" name="generate">Generate QR Code</button>
+    <a href="teacher_dashboard.php">← Back to Dashboard</a>
 </form>
 
 <?php if ($qrImage): ?>

@@ -8,8 +8,6 @@ if (!isset($_SESSION['role']) ||($_SESSION['role']) !== 'teacher') {
     exit;
 }
 
-
-
 // Total students
 
 $total_students_query = $conn->query("SELECT COUNT(*) AS total FROM student");
