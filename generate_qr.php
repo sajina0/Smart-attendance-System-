@@ -100,9 +100,7 @@ if (isset($_POST['generate'])) {
                         $session_id = $row['session_id'];
                         $success = "QR code generated successfully";
 
-                        $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") .
-                                    "://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
-                         $attendance_link = "192.168.137.1/abcd/project/attendance.php?token=$token&class=$class_id&date=$session_date&subject_id=$subject_id";
+$attendance_link = "http://192.168.137.1/project/attendance.php?token=$token&class=$class_id&date=$session_date&subject_id=$subject_id";
 
 
                         $qr = Builder::create()
@@ -130,9 +128,7 @@ if (isset($_POST['generate'])) {
                             $session_id = $stmt->insert_id;
                             $success = "Attendance QR code generated successfully!";
 
-                            $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") .
-                                        "://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
-                            $attendance_link = $base_url . "/attendance.php?token=" . urlencode($token);
+$attendance_link = "http://192.168.137.1/project/attendance.php?token=" . urlencode($token);
 
                             $qr = Builder::create()
                                 ->data($attendance_link)
